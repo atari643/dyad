@@ -118,6 +118,22 @@ export const VertexProviderSettingSchema = z.object({
   serviceAccountKey: SecretSchema.optional(),
 });
 
+/**
+ * Settings for the local Claude CLI provider. Every field is optional: with an
+ * installed and signed-in CLI on PATH, the provider works with no configuration
+ * at all. Each field can also be overridden by an environment variable
+ * (DYAD_CLAUDE_CLI_PATH, DYAD_CLAUDE_CLI_TIMEOUT_MS).
+ */
+export const ClaudeCliSettingsSchema = z.object({
+  /** Explicit path to the CLI executable; auto-detected when unset. */
+  binaryPath: z.string().optional(),
+  /** Milliseconds before a hung run is terminated. Defaults to 10 minutes. */
+  timeoutMs: z.number().int().positive().optional(),
+  /** Extra CLI flags. Debugging escape hatch; unsupported flags may break runs. */
+  extraArgs: z.array(z.string()).optional(),
+});
+export type ClaudeCliSettings = z.infer<typeof ClaudeCliSettingsSchema>;
+
 export const ProviderSettingSchema = z.union([
   // Must use more specific type first!
   // Zod uses the first type that matches.
@@ -371,6 +387,7 @@ const BaseUserSettingsFields = {
   ////////////////////////////////
   selectedModel: LargeLanguageModelSchema,
   providerSettings: z.record(z.string(), ProviderSettingSchema),
+  claudeCli: ClaudeCliSettingsSchema.optional(),
   agentToolConsents: z.record(z.string(), AgentToolConsentSchema).optional(),
   githubUser: GithubUserSchema.optional(),
   githubAccessToken: SecretSchema.optional(),
