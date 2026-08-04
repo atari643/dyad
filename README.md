@@ -11,6 +11,7 @@ More info at: [https://dyad.sh/](https://dyad.sh/)
 - ⚡️ **Local**: Fast, private and no lock-in.
 - 🛠 **Bring your own keys**: Use your own AI API keys — no vendor lock-in.
 - 🖥️ **Cross-platform**: Easy to run on Mac or Windows.
+- 🧩 **Or bring no keys at all**: Build with the Claude CLI you already have installed — see [CLI providers](docs/cli-providers.md).
 
 ## 📦 Download
 
