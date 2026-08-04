@@ -55,6 +55,13 @@ vi.mock("../shared/language_model_helpers", () => ({
       name: "OpenRouter",
       type: "cloud",
     },
+    {
+      id: "claude-cli",
+      name: "Claude CLI (local)",
+      // Deliberately no gatewayPrefix: CLI providers must never be routed
+      // through the Dyad Pro engine.
+      type: "cloud",
+    },
   ]),
 }));
 
@@ -90,6 +97,34 @@ vi.mock("../shared/remote_language_model_catalog", () => ({
 describe("getModelClient", () => {
   afterEach(() => {
     setModelClientFetchForTesting(undefined);
+  });
+
+  test("builds a local CLI client for claude-cli without an API key", async () => {
+    const { modelClient } = await getModelClient(
+      { provider: "claude-cli", name: "sonnet" },
+      { providerSettings: {} } as unknown as UserSettings,
+    );
+
+    const model = modelClient.model as { provider: string; modelId: string };
+    expect(model.provider).toBe("claude-cli");
+    expect(model.modelId).toBe("sonnet");
+    expect(modelClient.builtinProviderId).toBe("claude-cli");
+  });
+
+  test("does not route claude-cli through the Dyad Pro engine", async () => {
+    // Dyad Pro is enabled here: a gateway prefix would hijack the request and
+    // send it to the hosted engine instead of the local CLI.
+    const { modelClient } = await getModelClient(
+      { provider: "claude-cli", name: "opus" },
+      {
+        enableDyadPro: true,
+        providerSettings: { auto: { apiKey: { value: "dyad-pro-key" } } },
+      } as unknown as UserSettings,
+    );
+
+    const model = modelClient.model as { provider: string; modelId: string };
+    expect(model.provider).toBe("claude-cli");
+    expect(model.modelId).toBe("opus");
   });
 
   test("keeps the Anthropic gateway prefix for Dyad Engine models", async () => {
