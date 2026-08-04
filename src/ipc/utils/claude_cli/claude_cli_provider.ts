@@ -20,9 +20,7 @@ import { buildClaudeCliRequest } from "./build_request";
 import {
   binaryNotFoundError,
   exitCodeError,
-  isRateLimited,
   notAuthenticatedError,
-  rateLimitError,
   timeoutError,
 } from "./errors";
 import { checkClaudeCliHealth } from "./health_check";
@@ -277,10 +275,9 @@ function runClaudeCli(
           reject(timeoutError(timeoutMs));
           return;
         }
-        if (isRateLimited(parser.rateLimit)) {
-          reject(rateLimitError(parser.rateLimit!));
-          return;
-        }
+        // Rate limit events are only consulted when the run actually failed.
+        // The CLI also emits them on healthy runs (status "allowed"), and
+        // treating an unrecognised status as fatal would reject good output.
         if (code !== 0 || parser.result?.isError) {
           reject(exitCodeError({ code, stderr, rateLimit: parser.rateLimit }));
           return;

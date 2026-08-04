@@ -160,6 +160,18 @@ describe("createClaudeCliProvider", () => {
     expect(error.error.kind).toBe("rate_limited");
   });
 
+  it("does not fail a healthy run that reports quota status", async () => {
+    // The CLI emits rate_limit_event on successful runs too. Only a failed run
+    // should be reinterpreted as a rate limit.
+    process.env.FAKE_CLAUDE_SCENARIO = "quota-ok";
+
+    const parts = await streamWith(callOptions());
+
+    expect(parts.some((p) => p.type === "error")).toBe(false);
+    expect(parts.some((p) => p.type === "finish")).toBe(true);
+    expect(textOf(parts)).toContain("stdin:hello");
+  });
+
   it("terminates a hung run once the timeout elapses", async () => {
     process.env.FAKE_CLAUDE_SCENARIO = "hang";
 

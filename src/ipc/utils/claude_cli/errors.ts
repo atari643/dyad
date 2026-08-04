@@ -117,8 +117,14 @@ export function exitCodeError({
   }
 
   const detail = stderr.trim().slice(0, 2000);
+  // A zero exit code paired with a failure means the CLI reported the error in
+  // its result event; saying "exited with code 0" there would be misleading.
+  const summary =
+    code === 0 || code == null
+      ? "Claude CLI reported an error"
+      : `Claude CLI exited with code ${code}`;
   return new DyadError(
-    `Claude CLI exited with code ${code ?? "unknown"}.${detail ? `\n${detail}` : ""}`,
+    `${summary}.${detail ? `\n${detail}` : ""}`,
     DyadErrorKind.External,
   );
 }

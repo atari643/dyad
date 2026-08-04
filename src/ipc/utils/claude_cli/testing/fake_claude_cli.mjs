@@ -79,6 +79,16 @@ process.stdin.on("end", () => {
   }
 
   emit({ type: "system", subtype: "init", session_id: "fake-session" });
+
+  if (scenario === "quota-ok") {
+    // The real CLI reports quota status on healthy runs too; this must not be
+    // mistaken for a failure.
+    emit({
+      type: "rate_limit_event",
+      rate_limit_info: { status: "allowed", rateLimitType: "five_hour" },
+    });
+  }
+
   // Echo the inputs back so tests can assert how the prompt was transported.
   textDelta(`stdin:${stdin}`);
   textDelta(`|system:${systemPrompt}`);
