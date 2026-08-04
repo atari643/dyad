@@ -16,7 +16,11 @@ import type {
 } from "../../lib/schemas";
 import { getEnvVar } from "./read_env";
 import log from "electron-log";
-import { FREE_OPENROUTER_MODEL_NAMES } from "../shared/language_model_constants";
+import {
+  CLAUDE_CLI_PROVIDER_ID,
+  FREE_OPENROUTER_MODEL_NAMES,
+} from "../shared/language_model_constants";
+import { createClaudeCliProvider } from "./claude_cli/claude_cli_provider";
 import { getLanguageModelProviders } from "../shared/language_model_helpers";
 import { resolveBuiltinModelAlias } from "../shared/remote_language_model_catalog";
 import { LanguageModelProvider } from "@/ipc/types";
@@ -562,6 +566,23 @@ function getRegularModelClient(
         ...getModelClientFetchOption(),
       });
 
+      return {
+        modelClient: {
+          model: provider(model.name),
+          builtinProviderId: providerId,
+        },
+        backupModelClients: [],
+      };
+    }
+    case CLAUDE_CLI_PROVIDER_ID: {
+      // Runs the locally installed Claude CLI instead of calling the Anthropic
+      // API. Credentials come from the CLI's own session, so no API key is
+      // read here.
+      const provider = createClaudeCliProvider({
+        binaryPath: settings.claudeCli?.binaryPath,
+        timeoutMs: settings.claudeCli?.timeoutMs,
+        extraArgs: settings.claudeCli?.extraArgs,
+      });
       return {
         modelClient: {
           model: provider(model.name),

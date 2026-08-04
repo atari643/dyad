@@ -7,6 +7,7 @@ import type { LanguageModelProvider, LanguageModel } from "@/ipc/types";
 import { eq } from "drizzle-orm";
 import log from "electron-log";
 import {
+  CLI_PROVIDERS,
   CLOUD_PROVIDERS,
   LOCAL_PROVIDERS,
   MODEL_OPTIONS,
@@ -66,6 +67,22 @@ export async function getLanguageModelProviders(): Promise<
         envVarName:
           PROVIDER_TO_ENV_VAR[providerId as keyof typeof PROVIDER_TO_ENV_VAR] ??
           undefined,
+        type: "cloud",
+      });
+    }
+  }
+
+  // CLI-backed providers are typed as "cloud" so that their models come from
+  // MODEL_OPTIONS and render in the standard model picker. They intentionally
+  // carry no gatewayPrefix, which keeps Dyad Pro from routing them through the
+  // hosted engine instead of the local CLI.
+  for (const [providerId, providerDetails] of Object.entries(CLI_PROVIDERS)) {
+    if (!hardcodedProviders.some((p) => p.id === providerId)) {
+      hardcodedProviders.push({
+        id: providerId,
+        name: providerDetails.displayName,
+        hasFreeTier: providerDetails.hasFreeTier,
+        websiteUrl: providerDetails.websiteUrl,
         type: "cloud",
       });
     }

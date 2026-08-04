@@ -3,7 +3,10 @@ import {
   type VertexProviderSetting,
   type AzureProviderSetting,
 } from "./schemas";
-import { PROVIDER_TO_ENV_VAR } from "../ipc/shared/language_model_constants";
+import {
+  CLAUDE_CLI_PROVIDER_ID,
+  PROVIDER_TO_ENV_VAR,
+} from "../ipc/shared/language_model_constants";
 
 export interface ProviderCheckOptions {
   settings: UserSettings | null;
@@ -29,6 +32,14 @@ export function isProviderSetup(
   }
 
   const providerSettings = settings?.providerSettings[provider];
+
+  // CLI-backed providers authenticate through the CLI's own session (e.g.
+  // `claude auth login`), so there is nothing for Dyad to store or check.
+  // Reporting them as configured keeps their models unlocked in the picker;
+  // a missing or signed-out CLI surfaces as an actionable error at run time.
+  if (provider === CLAUDE_CLI_PROVIDER_ID) {
+    return true;
+  }
 
   // Vertex uses service account credentials instead of an API key
   if (provider === "vertex") {

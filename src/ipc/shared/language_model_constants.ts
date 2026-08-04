@@ -533,6 +533,33 @@ export const MODEL_OPTIONS: Record<string, ModelOption[]> = {
       dollarSigns: 1,
     },
   ],
+  // Model aliases rather than pinned versions: the CLI resolves them to the
+  // current release, so this list does not need updating on every model launch.
+  // `dollarSigns: 0` reflects that requests are covered by the user's Claude
+  // subscription and are not billed per token.
+  "claude-cli": [
+    {
+      name: "sonnet",
+      displayName: "Claude Sonnet (CLI)",
+      description: "Balanced coding model, run through the local Claude CLI",
+      contextWindow: 1_000_000,
+      dollarSigns: 0,
+    },
+    {
+      name: "opus",
+      displayName: "Claude Opus (CLI)",
+      description: "Most capable model, run through the local Claude CLI",
+      contextWindow: 200_000,
+      dollarSigns: 0,
+    },
+    {
+      name: "haiku",
+      displayName: "Claude Haiku (CLI)",
+      description: "Fastest model, run through the local Claude CLI",
+      contextWindow: 200_000,
+      dollarSigns: 0,
+    },
+  ],
 };
 
 export const FREE_OPENROUTER_MODEL_NAMES = MODEL_OPTIONS.openrouter
@@ -643,5 +670,35 @@ export const LOCAL_PROVIDERS: Record<
   lmstudio: {
     displayName: "LM Studio",
     hasFreeTier: true,
+  },
+};
+
+export const CLAUDE_CLI_PROVIDER_ID = "claude-cli";
+
+/**
+ * Providers backed by a locally installed agent CLI rather than an HTTP API.
+ *
+ * They are kept out of {@link CLOUD_PROVIDERS} on purpose: that record requires
+ * a `gatewayPrefix`, and any non-nullish prefix makes Dyad Pro route the
+ * request through its hosted engine — which would defeat the point of running
+ * the model locally. They are also not {@link LOCAL_PROVIDERS}, because that
+ * type is reserved for providers whose models are discovered at runtime
+ * (Ollama, LM Studio) and which have bespoke UI in the model picker.
+ *
+ * Credentials live in the CLI itself, so there is no API key to configure —
+ * see `isProviderSetup` in `src/lib/providerUtils.ts`.
+ */
+export const CLI_PROVIDERS: Record<
+  string,
+  {
+    displayName: string;
+    hasFreeTier: boolean;
+    websiteUrl: string;
+  }
+> = {
+  [CLAUDE_CLI_PROVIDER_ID]: {
+    displayName: "Claude CLI (local)",
+    hasFreeTier: true,
+    websiteUrl: "https://docs.claude.com/en/docs/claude-code/overview",
   },
 };
