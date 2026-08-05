@@ -138,19 +138,48 @@ need no credentials:
 npx vitest run src/ipc/utils/claude_cli
 ```
 
-## Antigravity CLI (`agy`)
+## Antigravity CLI (`agy`) — evaluated, not integrated
 
-Google's Antigravity CLI replaced Gemini CLI and offers a comparable headless
-mode (`agy -p --output-format stream-json`). It is **not integrated yet**: three
-properties that the Claude CLI provider depends on are undocumented for `agy`
-and need to be measured before a provider can be built responsibly.
+Google's Antigravity CLI (`agy`, the successor to Gemini CLI) has a headless
+mode that looks superficially like the Claude CLI's. It was evaluated against
+`agy` 1.1.10 on Windows and **cannot serve Dyad's build mode**. The three
+properties the provider design depends on were measured, and all three fail.
 
-1. Can the prompt be piped through **stdin**? If not, it must travel in argv,
-   which caps prompts at roughly 32k characters on Windows — too small for
-   codebase context.
-2. Can its **tools be disabled**? Otherwise `agy` edits files itself and
-   conflicts with Dyad's proposal and approval pipeline.
-3. How fine-grained is its streaming? Its documented events (`init`,
-   `step_update`, `result`) suggest step-level rather than token-level updates.
+**1. The prompt cannot be piped — it must fit in the command line.**
 
-Dyad's existing Gemini API provider is unaffected and continues to work.
+`agy` reads the prompt from the `--print` flag value, not stdin; piped input is
+ignored. That puts the entire prompt into argv, where Windows caps a process
+command line at 32,767 characters. Measured with `spawnSync`:
+
+| Prompt size  | Result                                    |
+| ------------ | ----------------------------------------- |
+| 32,000 chars | spawns                                    |
+| 33,000 chars | `ENAMETOOLONG` — the process never starts |
+
+Dyad's build-mode system prompt is already on the order of 20,000 characters
+before any codebase context or conversation history is appended, and codebase
+context alone routinely runs to hundreds of kilobytes. The prompt physically
+cannot be delivered. There is no `--system-prompt`, `--prompt-file` or stdin
+option to work around it.
+
+**2. Tools cannot be disabled.**
+
+There is no equivalent of `--tools ""`. The `init` event advertises the full
+agent toolset (file access, browser control, and more). `agy` would edit files
+itself instead of emitting `<dyad-write>` tags, bypassing Dyad's proposal,
+diff and approval pipeline — the opposite of what this integration is for.
+
+**3. Streaming is step-level, not token-level.**
+
+`stream-json` emits `init`, `step_update` and `result`. The assistant's text
+arrives as a single `text_delta` inside one already-`DONE` step, so responses
+would appear all at once rather than streaming into the chat.
+
+Any of these alone would be a hard blocker; together they mean a provider could
+only be built on workarounds (spilling the prompt to a file and asking the
+agent to read it, then fighting its tools for control of the working tree).
+That is more fragile than the API path it would replace, so it was not built.
+
+**Dyad's existing Gemini API provider is untouched and continues to work.**
+Revisit this if `agy` gains stdin or file-based prompt input plus a way to run
+without tools.
