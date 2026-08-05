@@ -2,10 +2,24 @@ import { useQuery } from "@tanstack/react-query";
 import { ipc, type LanguageModelProvider } from "@/ipc/types";
 import { useSettings } from "./useSettings";
 import { cloudProviders } from "@/lib/schemas";
+import { CLI_PROVIDERS } from "@/ipc/shared/language_model_constants";
 import { queryKeys } from "@/lib/queryKeys";
 import { isProviderSetup as isProviderSetupUtil } from "@/lib/providerUtils";
 
-const localProviders = new Set(["ollama", "lmstudio"]);
+/**
+ * Providers whose credentials live outside Dyad — a local server (Ollama,
+ * LM Studio) or a signed-in CLI session.
+ *
+ * There is no API key for Dyad to check, so they count as configured once the
+ * user has actually selected one. Gating on selection rather than on mere
+ * existence keeps the setup banner working for a fresh install; if the backing
+ * server or CLI is missing, the request fails with an actionable error instead.
+ */
+const selfConfiguredProviders = new Set([
+  "ollama",
+  "lmstudio",
+  ...Object.keys(CLI_PROVIDERS),
+]);
 
 export function useLanguageModelProviders() {
   const { settings, envVars } = useSettings();
@@ -29,7 +43,7 @@ export function useLanguageModelProviders() {
   const isAnyProviderSetup = () => {
     if (
       settings?.selectedModel.provider &&
-      localProviders.has(settings.selectedModel.provider) &&
+      selfConfiguredProviders.has(settings.selectedModel.provider) &&
       settings.selectedModel.name.trim()
     ) {
       return true;
