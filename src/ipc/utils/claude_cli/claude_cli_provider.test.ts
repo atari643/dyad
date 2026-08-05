@@ -213,24 +213,47 @@ describe("createClaudeCliProvider", () => {
     expect(error.error.message).toMatch(/npm install -g/);
   });
 
-  it("refuses tool calling instead of silently ignoring the tools", async () => {
-    const model = createClaudeCliProvider({ binaryPath: fakeCliPath })(
-      "sonnet",
-    ) as any;
+  it("turns an emulated tool call into a real tool-call part", async () => {
+    process.env.FAKE_CLAUDE_SCENARIO = "tool-call";
 
-    await expect(
-      model.doStream(
-        callOptions({
-          tools: [
-            {
-              type: "function",
-              name: "edit-code",
-              inputSchema: { type: "object" },
-            },
-          ],
-        }),
-      ),
-    ).rejects.toThrow(/does not support tool calling/i);
+    const parts = await streamWith(
+      callOptions({
+        tools: [
+          {
+            type: "function",
+            name: "read_file",
+            inputSchema: { type: "object" },
+          },
+        ],
+      }),
+    );
+
+    const toolCall = parts.find((p) => p.type === "tool-call");
+    expect(toolCall.toolName).toBe("read_file");
+    expect(JSON.parse(toolCall.input)).toEqual({ path: "a.ts" });
+
+    // The agent loop keys off this to run another step.
+    const finish = parts.find((p) => p.type === "finish");
+    expect(finish.finishReason.unified).toBe("tool-calls");
+    expect(parts.some((p) => p.type === "error")).toBe(false);
+  });
+
+  it("keeps the tool protocol out of the user-visible text", async () => {
+    process.env.FAKE_CLAUDE_SCENARIO = "tool-call";
+
+    const parts = await streamWith(
+      callOptions({
+        tools: [
+          {
+            type: "function",
+            name: "read_file",
+            inputSchema: { type: "object" },
+          },
+        ],
+      }),
+    );
+
+    expect(textOf(parts)).not.toContain("dyad_cli");
   });
 
   it("returns aggregated text from doGenerate", async () => {

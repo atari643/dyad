@@ -6,6 +6,7 @@ import type {
 import log from "electron-log";
 
 import type { ClaudeCliRateLimit } from "./errors";
+import { ToolCallExtractor } from "./tool_call_parser";
 
 const logger = log.scope("claude-cli-parser");
 
@@ -90,9 +91,12 @@ export interface ClaudeCliResultSummary {
 export class ClaudeCliStreamParser {
   /** Holds an incomplete trailing line between chunks. */
   private buffer = "";
-  /** Content-block indices for which we already emitted `text-start`. */
-  private readonly openTextBlocks = new Set<string>();
   private readonly openReasoningBlocks = new Set<string>();
+  /**
+   * Owns text framing and pulls emulated tool calls out of the text stream.
+   * All assistant text flows through it.
+   */
+  private readonly toolCalls = new ToolCallExtractor();
   private emittedText = false;
   private finished = false;
 
@@ -139,11 +143,11 @@ export class ClaudeCliStreamParser {
       return [];
     }
     this.emittedText = true;
-    const id = "fallback";
+    // Routed through the extractor so a non-streamed response can still carry
+    // tool calls.
     return [
-      { type: "text-start", id },
-      { type: "text-delta", id, delta: this.result.text },
-      { type: "text-end", id },
+      ...this.toolCalls.push(this.result.text),
+      ...this.toolCalls.flush(),
     ];
   }
 
@@ -161,10 +165,8 @@ export class ClaudeCliStreamParser {
       parts.push({ type: "reasoning-end", id });
     }
     this.openReasoningBlocks.clear();
-    for (const id of this.openTextBlocks) {
-      parts.push({ type: "text-end", id });
-    }
-    this.openTextBlocks.clear();
+    // Flushes any held-back text and closes the text block.
+    parts.push(...this.toolCalls.flush());
     return parts;
   }
 
@@ -218,23 +220,17 @@ export class ClaudeCliStreamParser {
           this.openReasoningBlocks.add(id);
           return [{ type: "reasoning-start", id }];
         }
-        if (blockType === "text") {
-          this.openTextBlocks.add(id);
-          return [{ type: "text-start", id }];
-        }
+        // Text framing is owned by the tool-call extractor, which cannot open
+        // a block until it knows the text is not the start of a tool call.
         return [];
       }
       case "content_block_delta": {
         const delta = event.delta;
         if (delta?.type === "text_delta" && typeof delta.text === "string") {
-          const parts: LanguageModelV3StreamPart[] = [];
-          if (!this.openTextBlocks.has(id)) {
-            this.openTextBlocks.add(id);
-            parts.push({ type: "text-start", id });
-          }
           this.emittedText = true;
-          parts.push({ type: "text-delta", id, delta: delta.text });
-          return parts;
+          // Tool calls are emulated inside the text stream, so text always
+          // goes through the extractor, which owns text-start/end framing.
+          return this.toolCalls.push(delta.text);
         }
         if (
           delta?.type === "thinking_delta" &&
@@ -254,9 +250,8 @@ export class ClaudeCliStreamParser {
         if (this.openReasoningBlocks.delete(id)) {
           return [{ type: "reasoning-end", id }];
         }
-        if (this.openTextBlocks.delete(id)) {
-          return [{ type: "text-end", id }];
-        }
+        // Text blocks are closed on flush, once the extractor knows no tool
+        // call is still being assembled.
         return [];
       }
       default:
@@ -285,10 +280,16 @@ export class ClaudeCliStreamParser {
     }
 
     this.finished = true;
+    // The CLI always reports "end_turn" because emulated tool calls are just
+    // text to it. The agent loop keys off "tool-calls" to run another step, so
+    // the reason has to reflect what was actually extracted.
+    const finishReason = this.toolCalls.sawToolCall
+      ? ({ unified: "tool-calls", raw: event.stop_reason } as const)
+      : mapFinishReason(event.stop_reason, isError);
     parts.push({
       type: "finish",
       usage: mapUsage(event.usage),
-      finishReason: mapFinishReason(event.stop_reason, isError),
+      finishReason,
     });
     return parts;
   }

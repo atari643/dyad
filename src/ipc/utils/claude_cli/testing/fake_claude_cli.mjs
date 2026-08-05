@@ -80,6 +80,26 @@ process.stdin.on("end", () => {
 
   emit({ type: "system", subtype: "init", session_id: "fake-session" });
 
+  if (scenario === "tool-call") {
+    // Split across deltas so the extractor's marker-boundary handling is
+    // exercised the way a real token stream would exercise it.
+    const call =
+      '<dyad_cli_tool_call name="read_file">{"path":"a.ts"}</dyad_cli_tool_call>';
+    textDelta("Let me look. ");
+    for (let i = 0; i < call.length; i += 7) {
+      textDelta(call.slice(i, i + 7));
+    }
+    emit({
+      type: "result",
+      subtype: "success",
+      is_error: false,
+      stop_reason: "end_turn",
+      result: "",
+      usage: { input_tokens: 5, output_tokens: 5 },
+    });
+    process.exit(0);
+  }
+
   if (scenario === "quota-ok") {
     // The real CLI reports quota status on healthy runs too; this must not be
     // mistaken for a failure.

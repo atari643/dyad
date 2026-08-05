@@ -65,21 +65,6 @@ export function timeoutError(timeoutMs: number): DyadError {
   );
 }
 
-/**
- * The provider runs the CLI as a plain text generator (`--tools ""`) so that
- * Dyad keeps ownership of file edits via its `<dyad-write>` pipeline. Chat
- * modes that rely on AI SDK tool calling (ask / plan / agent) therefore cannot
- * be served by this provider.
- */
-export function toolsUnsupportedError(): DyadError {
-  return new DyadError(
-    `The Claude CLI provider does not support tool calling, which Dyad's ask, plan ` +
-      `and agent modes require. Switch to Build mode, or select an API-based ` +
-      `provider for those modes.`,
-    DyadErrorKind.Precondition,
-  );
-}
-
 export function attachmentsUnsupportedError(): DyadError {
   return new DyadError(
     `The Claude CLI provider only supports text prompts; images and file ` +

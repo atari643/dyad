@@ -23,6 +23,36 @@ Implementation lives in `src/ipc/utils/claude_cli/`, and is registered as a
 normal Vercel AI SDK provider (`LanguageModelV3`) in
 `src/ipc/utils/get_model_client.ts`.
 
+## Tool calling
+
+Build mode needs no tools, but Ask, Plan and Agent modes drive an AI SDK tool
+loop. The CLI has no native tool-call channel — its own tools are disabled and
+it only emits text — so tool calling is emulated over that text.
+
+When a request carries tools, the provider appends a protocol section to the
+system prompt describing each tool and its JSON schema, and asks the model to
+emit calls as:
+
+```
+<dyad_cli_tool_call name="read_file">{"path":"src/main.ts"}</dyad_cli_tool_call>
+```
+
+`tool_call_parser.ts` pulls those markers out of the streaming text and emits
+real `tool-call` parts, so the rest of Dyad is unaware the channel is emulated.
+Previous calls and their results are replayed into the transcript using the same
+markers, which keeps multi-step loops coherent.
+
+Three properties matter and are covered by tests:
+
+- **Markers never leak into the chat.** Text is held back whenever its tail
+  could still grow into an opening marker, including when the marker is split
+  one character per chunk.
+- **Malformed calls fail loudly.** A call with invalid JSON or no name is
+  emitted as visible text rather than handed to the tool executor.
+- **The finish reason reflects reality.** The CLI always reports `end_turn`;
+  the provider reports `tool-calls` when calls were extracted, which is what
+  makes the agent loop run another step.
+
 ## Setup
 
 ### 1. Install the Claude CLI
@@ -81,10 +111,13 @@ shell quoting rules.
 
 Read this section before switching your whole workflow over.
 
-- **Build mode only.** Ask, Plan and Agent modes rely on AI SDK tool calling,
-  which the CLI cannot serve in print mode. Selecting a Claude CLI model in
-  those modes fails with an explicit message; use an API-based provider there.
-  Build mode — Dyad's core app-building loop — is fully supported.
+- **Tool calling is emulated, not native.** Ask, Plan and Agent modes need tool
+  calling, which the CLI has no channel for. The provider teaches the model a
+  text protocol in the system prompt and parses the calls back out (see
+  "Tool calling" below). It works — there is an integration test against the
+  real CLI — but it depends on the model following a format rather than on a
+  guaranteed API contract, so it is inherently less rigid than an API provider.
+  A malformed call is surfaced as visible text rather than silently dropped.
 - **Subscription quotas, not billing.** Requests are free, but your plan's
   5-hour and weekly limits apply. Dyad sends large codebase contexts, so you
   will consume quota noticeably faster than in ordinary CLI use. Throttling is
@@ -110,13 +143,13 @@ Start with the CLI on its own — if this fails, the problem is not Dyad:
 echo "Reply with just: OK" | claude -p --tools "" --output-format stream-json --include-partial-messages --verbose
 ```
 
-| Symptom                         | Fix                                                                       |
-| ------------------------------- | ------------------------------------------------------------------------- |
-| "Claude CLI not found"          | `npm install -g @anthropic-ai/claude-code`, or set `claudeCli.binaryPath` |
-| "not authenticated"             | `claude auth login`                                                       |
-| "rate limited"                  | Wait for the reported reset, or switch provider for now                   |
-| "does not support tool calling" | Switch to Build mode, or use an API provider                              |
-| Runs hang                       | Raise `claudeCli.timeoutMs`                                               |
+| Symptom                            | Fix                                                                             |
+| ---------------------------------- | ------------------------------------------------------------------------------- |
+| "Claude CLI not found"             | `npm install -g @anthropic-ai/claude-code`, or set `claudeCli.binaryPath`       |
+| "not authenticated"                | `claude auth login`                                                             |
+| "rate limited"                     | Wait for the reported reset, or switch provider for now                         |
+| Raw `<dyad_cli_tool_call>` in chat | The model emitted a malformed call; retry, or use an API provider for that mode |
+| Runs hang                          | Raise `claudeCli.timeoutMs`                                                     |
 
 Set `DYAD_CLAUDE_CLI_DEBUG=1` (or enable Dyad's debug logging) to see the
 resolved binary, the arguments and payload sizes under the `claude-cli` log

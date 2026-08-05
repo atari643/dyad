@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+// Text framing is owned by the tool-call extractor, which uses a single id.
+const TEXT_ID = "text-0";
+
 import { ClaudeCliStreamParser } from "@/ipc/utils/claude_cli/stream_parser";
 
 /** Builds one NDJSON line, as the CLI emits it. */
@@ -50,10 +53,10 @@ describe("ClaudeCliStreamParser", () => {
     ];
 
     expect(parts).toEqual([
-      { type: "text-start", id: "0" },
-      { type: "text-delta", id: "0", delta: "hello" },
-      { type: "text-delta", id: "0", delta: " world" },
-      { type: "text-end", id: "0" },
+      { type: "text-start", id: TEXT_ID },
+      { type: "text-delta", id: TEXT_ID, delta: "hello" },
+      { type: "text-delta", id: TEXT_ID, delta: " world" },
+      { type: "text-end", id: TEXT_ID },
       expect.objectContaining({ type: "finish" }),
     ]);
   });
@@ -67,8 +70,8 @@ describe("ClaudeCliStreamParser", () => {
     expect(parser.push(full.slice(0, cut))).toEqual([]);
 
     expect(parser.push(full.slice(cut))).toEqual([
-      { type: "text-start", id: "0" },
-      { type: "text-delta", id: "0", delta: "split" },
+      { type: "text-start", id: TEXT_ID },
+      { type: "text-delta", id: TEXT_ID, delta: "split" },
     ]);
   });
 
@@ -97,7 +100,7 @@ describe("ClaudeCliStreamParser", () => {
     const flushed = parser.flush();
     expect(flushed).toContainEqual({
       type: "text-delta",
-      id: "0",
+      id: TEXT_ID,
       delta: "b",
     });
   });
@@ -140,9 +143,9 @@ describe("ClaudeCliStreamParser", () => {
     const parts = parser.push(resultEvent());
 
     expect(parts).toEqual([
-      { type: "text-start", id: "fallback" },
-      { type: "text-delta", id: "fallback", delta: "hello world" },
-      { type: "text-end", id: "fallback" },
+      { type: "text-start", id: TEXT_ID },
+      { type: "text-delta", id: TEXT_ID, delta: "hello world" },
+      { type: "text-end", id: TEXT_ID },
       expect.objectContaining({ type: "finish" }),
     ]);
   });
@@ -205,6 +208,8 @@ describe("ClaudeCliStreamParser", () => {
       }),
     );
 
+    // Reasoning blocks keep the CLI's content-block index; only text framing
+    // moved to the tool-call extractor.
     expect(parts).toEqual([
       { type: "reasoning-start", id: "0" },
       { type: "reasoning-delta", id: "0", delta: "pondering" },

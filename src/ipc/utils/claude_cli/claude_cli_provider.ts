@@ -419,6 +419,7 @@ class ClaudeCliLanguageModel implements LanguageModelV3 {
 
     let text = "";
     let reasoning = "";
+    const toolCalls: LanguageModelV3Content[] = [];
     let usage: LanguageModelV3Usage = EMPTY_USAGE;
     let finishReason: LanguageModelV3GenerateResult["finishReason"] = {
       unified: "stop",
@@ -430,6 +431,8 @@ class ClaudeCliLanguageModel implements LanguageModelV3 {
         text += part.delta;
       } else if (part.type === "reasoning-delta") {
         reasoning += part.delta;
+      } else if (part.type === "tool-call") {
+        toolCalls.push(part);
       } else if (part.type === "finish") {
         usage = part.usage;
         finishReason = part.finishReason;
@@ -445,6 +448,7 @@ class ClaudeCliLanguageModel implements LanguageModelV3 {
     if (text) {
       content.push({ type: "text", text });
     }
+    content.push(...toolCalls);
 
     return {
       content,

@@ -92,21 +92,82 @@ describe("buildClaudeCliRequest", () => {
     expect(warnings).toEqual([]);
   });
 
-  it("rejects tool calling, which the CLI provider cannot serve", () => {
-    expect(() =>
-      buildClaudeCliRequest({
-        modelId: "sonnet",
-        options: callOptions({
-          tools: [
-            {
-              type: "function",
-              name: "edit-code",
-              inputSchema: { type: "object" },
+  it("teaches the tool protocol in the system prompt instead of using argv", () => {
+    const { systemPrompt, args } = buildClaudeCliRequest({
+      modelId: "sonnet",
+      options: callOptions({
+        tools: [
+          {
+            type: "function",
+            name: "edit_code",
+            description: "Edit a file",
+            inputSchema: {
+              type: "object",
+              properties: { path: { type: "string" } },
             },
-          ],
-        }),
+          },
+        ],
       }),
-    ).toThrow(/does not support tool calling/i);
+    });
+
+    expect(systemPrompt).toContain("edit_code");
+    expect(systemPrompt).toContain("Edit a file");
+    // The schema must reach the model, but never through the command line.
+    expect(systemPrompt).toContain('"properties"');
+    expect(args.join(" ")).not.toContain("edit_code");
+  });
+
+  it("adds no tool protocol when there are no tools", () => {
+    const { systemPrompt } = buildClaudeCliRequest({
+      modelId: "sonnet",
+      options: callOptions({
+        prompt: [
+          { role: "system", content: "base" },
+          { role: "user", content: [{ type: "text", text: "hi" }] },
+        ],
+      }),
+    });
+
+    expect(systemPrompt).toBe("base");
+  });
+
+  it("replays previous tool calls and results in the transcript", () => {
+    // The model must see its own earlier calls in the form it was asked to
+    // produce them, or multi-step agent loops lose their history.
+    const { stdin } = buildClaudeCliRequest({
+      modelId: "sonnet",
+      options: callOptions({
+        prompt: [
+          { role: "user", content: [{ type: "text", text: "go" }] },
+          {
+            role: "assistant",
+            content: [
+              {
+                type: "tool-call",
+                toolCallId: "1",
+                toolName: "read_file",
+                input: '{"path":"a.ts"}',
+              },
+            ],
+          },
+          {
+            role: "tool",
+            content: [
+              {
+                type: "tool-result",
+                toolCallId: "1",
+                toolName: "read_file",
+                output: { type: "text", value: "file contents" },
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    expect(stdin).toContain('name="read_file"');
+    expect(stdin).toContain('{"path":"a.ts"}');
+    expect(stdin).toContain("file contents");
   });
 
   it("rejects file attachments with an actionable message", () => {

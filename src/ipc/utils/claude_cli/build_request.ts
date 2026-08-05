@@ -4,7 +4,14 @@ import type {
   SharedV3Warning,
 } from "@ai-sdk/provider";
 
-import { attachmentsUnsupportedError, toolsUnsupportedError } from "./errors";
+import { attachmentsUnsupportedError } from "./errors";
+import {
+  buildToolProtocolPrompt,
+  TOOL_CALL_CLOSE,
+  TOOL_CALL_OPEN,
+  TOOL_RESULT_CLOSE,
+  TOOL_RESULT_OPEN,
+} from "./tool_protocol";
 
 export interface ClaudeCliRequest {
   /** Arguments passed to the CLI. Deliberately small -- see below. */
@@ -20,12 +27,43 @@ export interface ClaudeCliRequest {
   warnings: SharedV3Warning[];
 }
 
+function stringifyToolOutput(output: unknown): string {
+  if (output == null) {
+    return "";
+  }
+  if (typeof output === "string") {
+    return output;
+  }
+  // AI SDK tool results are tagged unions ({ type: "text", value }, etc.).
+  const value = (output as { value?: unknown }).value ?? output;
+  return typeof value === "string" ? value : JSON.stringify(value);
+}
+
+/**
+ * Renders one message as text.
+ *
+ * Tool calls and results have no native channel on the CLI, so they are
+ * replayed using the same markers the model is told to emit. That keeps the
+ * transcript self-consistent: the model sees its own previous calls in exactly
+ * the form it was asked to produce them.
+ */
 function textOf(message: LanguageModelV3Message): string {
   if (message.role === "system") {
     return message.content;
   }
+
   if (message.role === "tool") {
-    throw toolsUnsupportedError();
+    return message.content
+      .map((part) => {
+        if (part.type !== "tool-result") {
+          return "";
+        }
+        return `${TOOL_RESULT_OPEN} name="${part.toolName}">${stringifyToolOutput(
+          part.output,
+        )}${TOOL_RESULT_CLOSE}`;
+      })
+      .filter(Boolean)
+      .join("\n");
   }
 
   const chunks: string[] = [];
@@ -41,8 +79,21 @@ function textOf(message: LanguageModelV3Message): string {
       case "file":
         throw attachmentsUnsupportedError();
       case "tool-call":
+        chunks.push(
+          `${TOOL_CALL_OPEN} name="${part.toolName}">${
+            typeof part.input === "string"
+              ? part.input
+              : JSON.stringify(part.input)
+          }${TOOL_CALL_CLOSE}`,
+        );
+        break;
       case "tool-result":
-        throw toolsUnsupportedError();
+        chunks.push(
+          `${TOOL_RESULT_OPEN} name="${part.toolName}">${stringifyToolOutput(
+            part.output,
+          )}${TOOL_RESULT_CLOSE}`,
+        );
+        break;
       default:
         break;
     }
@@ -96,15 +147,19 @@ export function buildClaudeCliRequest({
   modelId,
   extraArgs = [],
 }: BuildClaudeCliRequestOptions): ClaudeCliRequest {
-  if (options.tools?.length) {
-    throw toolsUnsupportedError();
-  }
-
   const systemParts = options.prompt
     .filter((m): m is LanguageModelV3Message & { role: "system" } =>
       Boolean(m.role === "system"),
     )
     .map((m) => m.content);
+
+  // The CLI has no native tool channel, so tools are emulated over text: the
+  // protocol is taught in the system prompt and parsed back out of the
+  // response. See tool_protocol.ts and tool_call_parser.ts.
+  const toolPrompt = buildToolProtocolPrompt(options);
+  if (toolPrompt) {
+    systemParts.push(toolPrompt);
+  }
 
   const args = [
     "--print",
