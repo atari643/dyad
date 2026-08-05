@@ -276,6 +276,8 @@ export const migratedSurfaceBoundaryInventory = {
  */
 export const nonRemoteDispatchOrEnqueueInventory = [
   owned("hooks/useRunApp.ts", 1),
+  // ReadableStreamDefaultController.enqueue, emitting AI SDK stream parts.
+  owned("ipc/utils/claude_cli/claude_cli_provider.ts", 4),
   owned("ipc/services/app_runtime_service.ts", 2),
   owned("ipc/services/app_runtime_transport.ts", 1),
   owned("ipc/services/main_app_runtime_output.ts", 1),
