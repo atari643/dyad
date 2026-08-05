@@ -13,7 +13,6 @@ import type {
   LanguageModelV3Usage,
 } from "@ai-sdk/provider";
 import type { LanguageModel } from "ai";
-import log from "electron-log";
 import treeKill from "tree-kill";
 
 import { buildClaudeCliRequest } from "./build_request";
@@ -25,9 +24,8 @@ import {
 } from "./errors";
 import { checkClaudeCliHealth } from "./health_check";
 import { isShellShim, resolveClaudeBinary } from "./resolve_binary";
+import { debugLog, logger } from "./logging";
 import { ClaudeCliStreamParser } from "./stream_parser";
-
-const logger = log.scope("claude-cli");
 
 export const DEFAULT_CLAUDE_CLI_TIMEOUT_MS = 10 * 60 * 1000;
 /** Grace period between SIGTERM and SIGKILL when tearing a run down. */
@@ -168,7 +166,9 @@ function runClaudeCli(
     let aborted = false;
     let timeoutId: NodeJS.Timeout | undefined;
 
-    logger.debug(
+    // Sizes rather than contents: prompts are far too large to log, and they
+    // can carry the user's source code.
+    debugLog(
       `Spawning ${binaryPath} ${args.join(" ")} (stdin: ${request.stdin.length} chars, ` +
         `system prompt: ${request.systemPrompt?.length ?? 0} chars)`,
     );
@@ -333,7 +333,7 @@ class ClaudeCliLanguageModel implements LanguageModelV3 {
         binaryPath: this.options.binaryPath,
       });
       if (health.ok) {
-        logger.debug(
+        debugLog(
           `Claude CLI ready: ${health.version} (${health.authMethod ?? "unknown auth"}, ` +
             `${health.subscriptionType ?? "unknown plan"})`,
         );
